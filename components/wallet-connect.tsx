@@ -25,13 +25,20 @@ const BASE_SEPOLIA_PARAMS = {
   chainId: "0x14a34", // 84532 in hex
   chainName: "Base Sepolia",
   nativeCurrency: { name: "Ethereum", symbol: "ETH", decimals: 18 },
-  rpcUrls: ["https://sepolia.base.org"],
+  rpcUrls: ["https://sepolia.basescan.org"],
   blockExplorerUrls: ["https://sepolia.basescan.org"],
 }
 
 export function WalletConnect() {
   const { address, isConnected, chain } = useAccount()
   const { connect, connectors, isPending } = useConnect()
+  
+  // Ensure consistent rendering between server and client
+  const [isHydrated, setIsHydrated] = useState(false)
+  
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
 
   const handleConnect = useCallback(async (connector: any) => {
     try {
@@ -195,6 +202,20 @@ export function WalletConnect() {
       setIsFunding(false)
     }
   }, [burner, address, chain?.id, switchToBaseSepolia, fundAmount, sendTransactionAsync, refetchBalance])
+
+  // Show loading state until hydrated to prevent hydration mismatch
+  if (!isHydrated) {
+    return (
+      <Button
+        variant="outline"
+        className="bg-gray-500/20 border-gray-500/50 text-gray-400 w-full"
+        disabled
+      >
+        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        Loading...
+      </Button>
+    )
+  }
 
   // Wrong network - show switch button
   if (isWrongNetwork) {

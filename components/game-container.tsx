@@ -18,6 +18,7 @@ import { WalletConnect } from "./wallet-connect"
 import { GameStatsOnChain } from "./game-stats-onchain"
 import { Leaderboard } from "./leaderboard"
 import { PlayerBadge } from "./player-badge"
+import { ClientOnly } from "./client-only"
 import { useBurnerWallet } from "@/hooks/use-burner-wallet"
 import { useAccount } from "wagmi"
 import { checkForCompleteLines, canPlaceBlock } from "@/lib/game-utils"
@@ -77,8 +78,11 @@ export default function GameContainer() {
   const handleGameOver = async () => {
     setIsGameOver(true)
 
+    // Execute game over transaction without waiting to avoid UI blocking
     if (burner.isReady) {
-      await burner.executeGameAction("game_over", { score, level })
+      burner.executeGameAction("game_over", { score, level }).catch(error => {
+        console.error("Game over transaction failed:", error)
+      })
     }
 
     // Save to leaderboard if wallet connected
@@ -98,7 +102,9 @@ export default function GameContainer() {
 
   const startNewGame = async () => {
     if (burner.isReady) {
-      await burner.executeGameAction("new_game", {})
+      burner.executeGameAction("new_game", {}).catch(error => {
+        console.error("New game transaction failed:", error)
+      })
     }
 
     setGameBoard(
@@ -144,49 +150,73 @@ export default function GameContainer() {
   const handleCellClick = async (row: number, col: number) => {
     if (!selectedBlock) return
 
-    if (burner.pendingTx) return
+    // STRICT ON-CHAIN MODE: Block interaction if wallet is not ready for on-chain transactions
+    if (!burner.isReady) {
+      console.log("Game action blocked: burner wallet not ready for on-chain transactions")
+      return
+    }
+
+    // Block interaction if there's a pending transaction or queue
+    if (burner.pendingTx || burner.transactionQueueLength > 0 || burner.isProcessingQueue) {
+      console.log("Game action blocked: transaction in progress")
+      return
+    }
 
     if (canPlaceBlock(gameBoard, selectedBlock, row, col)) {
-      if (burner.isReady) {
-        burner.executeGameAction("place_block", {
+      // Send transactions first and wait for confirmation before updating UI
+      try {
+        // Queue place_block transaction and wait for result
+        const placeBlockSuccess = await burner.executeGameAction("place_block", {
           row,
           col,
           blockId: selectedBlock.id,
         })
-      }
 
-      const newBoard = [...gameBoard.map((row) => [...row])]
-
-      selectedBlock.shape.forEach((blockRow, rowOffset) => {
-        blockRow.forEach((cell, colOffset) => {
-          if (cell) {
-            newBoard[row + rowOffset][col + colOffset] = selectedBlock.color
-          }
-        })
-      })
-
-      setGameBoard(newBoard)
-      setAvailableBlocks((prev) => prev.filter((block) => block.id !== selectedBlock.id))
-      setPlacedBlocks((prev) => prev + 1)
-      setSelectedBlock(null)
-
-      const { clearedBoard, linesCleared } = checkForCompleteLines(newBoard)
-
-      if (linesCleared > 0) {
-        if (burner.isReady) {
-          burner.executeGameAction("clear_line", {
-            linesCleared,
-            score: linesCleared * POINTS_PER_LINE * level,
-          })
+        if (!placeBlockSuccess) {
+          console.error("Place block transaction failed, game state not updated")
+          return
         }
 
-        const pointsEarned = linesCleared * POINTS_PER_LINE * level
-        setScore((prev) => prev + pointsEarned)
-        setGameBoard(clearedBoard)
-      }
+        // Only update UI after successful transaction
+        const newBoard = [...gameBoard.map((row) => [...row])]
 
-      if (availableBlocks.length <= 1) {
-        generateNewBlocks()
+        selectedBlock.shape.forEach((blockRow, rowOffset) => {
+          blockRow.forEach((cell, colOffset) => {
+            if (cell) {
+              newBoard[row + rowOffset][col + colOffset] = selectedBlock.color
+            }
+          })
+        })
+
+        setGameBoard(newBoard)
+        setAvailableBlocks((prev) => prev.filter((block) => block.id !== selectedBlock.id))
+        setPlacedBlocks((prev) => prev + 1)
+        setSelectedBlock(null)
+
+        const { clearedBoard, linesCleared } = checkForCompleteLines(newBoard)
+
+        if (linesCleared > 0) {
+          const pointsEarned = linesCleared * POINTS_PER_LINE * level
+          setScore((prev) => prev + pointsEarned)
+          setGameBoard(clearedBoard)
+
+          // Queue clear_line transaction if applicable (non-blocking)
+          setTimeout(() => {
+            burner.executeGameAction("clear_line", {
+              linesCleared,
+              score: linesCleared * POINTS_PER_LINE * level,
+            }).catch(error => {
+              console.error("Clear line transaction failed:", error)
+            })
+          }, 500) // Small delay to avoid rapid-fire transactions
+        }
+
+        if (availableBlocks.length <= 1) {
+          generateNewBlocks()
+        }
+      } catch (error) {
+        console.error("Game action failed due to transaction error:", error)
+        // Don't update game state if transaction failed
       }
     }
   }
@@ -235,24 +265,34 @@ export default function GameContainer() {
         <PlayerBadge />
       </div>
 
-      <WalletConnect />
+      <ClientOnly>
+        <WalletConnect />
+      </ClientOnly>
 
-      {burner.address && <GameStatsOnChain />}
+      {burner.address && (
+        <ClientOnly>
+          <GameStatsOnChain />
+        </ClientOnly>
+      )}
 
       {!isConnected && (
-        <div className="w-full p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-yellow-500" />
-          <span className="text-yellow-400 text-sm">Connect wallet and fund session to enable on-chain moves.</span>
-        </div>
+        <ClientOnly>
+          <div className="w-full p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500" />
+            <span className="text-red-400 text-sm">Connect wallet to Base Sepolia to start on-chain gameplay.</span>
+          </div>
+        </ClientOnly>
       )}
 
       {isConnected && !burner.isReady && (
-        <div className="w-full p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg flex items-center gap-2">
-          <Zap className="w-4 h-4 text-blue-500" />
-          <span className="text-blue-400 text-sm">
-            Fund your session wallet to record moves on-chain (game playable without).
-          </span>
-        </div>
+        <ClientOnly>
+          <div className="w-full p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg flex items-center gap-2">
+            <Zap className="w-4 h-4 text-orange-500" />
+            <span className="text-orange-400 text-sm">
+              ON-CHAIN MODE: Fund your session wallet to enable gameplay. All moves require on-chain transactions.
+            </span>
+          </div>
+        </ClientOnly>
       )}
 
       <div className="flex justify-between w-full mb-2">
@@ -268,7 +308,7 @@ export default function GameContainer() {
         <div className="flex gap-2 justify-center flex-wrap">
           <Button
             onClick={rotateSelectedBlock}
-            disabled={!selectedBlock || !!burner.pendingTx}
+            disabled={!selectedBlock || !burner.isReady || !!burner.pendingTx || burner.transactionQueueLength > 0}
             variant="outline"
             className="text-black bg-white hover:bg-gray-100 hover:text-black disabled:opacity-50"
           >
@@ -277,10 +317,15 @@ export default function GameContainer() {
 
           <Button
             onClick={() => startNewGame()}
-            disabled={!!burner.pendingTx}
+            disabled={!burner.isReady || !!burner.pendingTx || burner.transactionQueueLength > 0}
             className="text-black bg-white hover:bg-gray-100 hover:text-black disabled:opacity-50"
           >
-            {burner.pendingTx ? "Processing..." : "New Game"}
+            {!burner.isReady 
+              ? "Fund Wallet to Play" 
+              : burner.pendingTx || burner.transactionQueueLength > 0
+                ? `Processing... (${burner.transactionQueueLength + (burner.pendingTx ? 1 : 0)})` 
+                : "New Game"
+            }
           </Button>
 
           <Button
@@ -303,7 +348,7 @@ export default function GameContainer() {
             <DialogTitle className="text-black text-xl">How to Play Block Placer</DialogTitle>
           </DialogHeader>
           <DialogDescription className="text-gray-700">
-            On-chain Block Placer with Auto-Transactions on Base Sepolia:
+            Strict On-Chain Block Placer on Base Sepolia (All Moves Require Transactions):
           </DialogDescription>
           <ul className="list-disc pl-5 space-y-2 mt-2 text-gray-800">
             <li>
@@ -313,7 +358,10 @@ export default function GameContainer() {
               <strong>Fund your session wallet</strong> - Each wallet gets a unique session wallet
             </li>
             <li>
-              After funding, all game moves are <strong>automatic</strong> - no wallet popups!
+              <strong>ON-CHAIN ONLY:</strong> All game moves require on-chain transactions. Gameplay blocked without funded wallet.
+            </li>
+            <li>
+              <strong>Automatic transactions</strong> - No wallet popups! All moves sent via session wallet.
             </li>
             <li>
               <strong>Compete on the leaderboard</strong> - Your best score is saved and ranked
@@ -359,7 +407,8 @@ export default function GameContainer() {
             <p className="text-lg">Blocks placed: {placedBlocks}</p>
             <p className="text-lg">On-chain transactions: {burner.totalTransactions}</p>
             <p className="text-lg">Total gas spent: {burner.totalGasSpent} ETH</p>
-            {address && <p className="text-lg mt-2 text-green-600 font-semibold">Score saved to leaderboard!</p>}
+            {address && burner.isReady && <p className="text-lg mt-2 text-green-600 font-semibold">Score saved to leaderboard!</p>}
+            {!burner.isReady && <p className="text-lg mt-2 text-orange-600 font-semibold">Fund wallet to save score and continue playing!</p>}
           </div>
           <DialogFooter>
             <Button
@@ -367,10 +416,10 @@ export default function GameContainer() {
                 startNewGame()
                 setIsGameOver(false)
               }}
-              disabled={!!burner.pendingTx}
+              disabled={!burner.isReady || !!burner.pendingTx}
               className="text-black bg-white hover:bg-gray-100 hover:text-black border border-gray-300"
             >
-              {burner.pendingTx ? "Processing..." : "Play Again"}
+              {!burner.isReady ? "Fund Wallet to Continue" : burner.pendingTx ? "Processing..." : "Play Again"}
             </Button>
           </DialogFooter>
         </DialogContent>

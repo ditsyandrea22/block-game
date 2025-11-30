@@ -6,6 +6,11 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  experimental: {
+    // Disable SWC compilation to avoid native module issues
+    swcTraceProfiling: false,
+    forceSwcTransforms: false,
+  },
   async headers() {
     return [
       {

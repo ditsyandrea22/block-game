@@ -1,6 +1,7 @@
 import { http, createConfig } from "wagmi"
 import { baseSepolia } from "wagmi/chains"
 import { injected, coinbaseWallet, walletConnect } from "wagmi/connectors"
+import "./global-polyfills"
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "34548f090395c08d157465907480cc5d"
 
@@ -15,18 +16,13 @@ const allowedOrigins = [
   'https://*.github.dev',
   'chrome-extension://*',
   'moz-extension://*',
+  'https://vigilant-space-eureka-544pj9pgpqx3p75x-3000.app.github.dev', // Current domain
 ]
 
 export const config = createConfig({
   chains: [baseSepolia],
   connectors: [
-    injected({
-      target: {
-        id: 'injected',
-        name: 'Injected',
-        provider: (window) => window,
-      },
-    }),
+    injected(),
     coinbaseWallet({
       appName: "Block Placer",
       appLogoUrl: '/favicon.ico',
@@ -40,16 +36,17 @@ export const config = createConfig({
         icons: [`${typeof window !== 'undefined' ? window.location.origin : 'https://block-placer.vercel.app'}/favicon.ico`],
       },
       showQrModal: true,
-      mobileLinks: ['metamask', 'trust', 'rainbow', 'imtoken', 'brave', 'coinbase'],
-      desktopLinks: ['metamask', 'rainbow', 'trust', 'zerion', 'imtoken'],
-      // Allow connections from extensions and development environments
-      relayUrl: 'wss://relay.walletconnect.com',
     }),
   ],
   transports: {
-    [baseSepolia.id]: http("https://sepolia.base.org"),
+    [baseSepolia.id]: http("https://base-sepolia-rpc.publicnode.com", {
+      fetchOptions: {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    }),
   },
-  ssr: true,
 })
 
 declare module "wagmi" {
