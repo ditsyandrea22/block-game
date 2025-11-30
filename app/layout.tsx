@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Block Placer - On-Chain Game",
   description: "A grid-based block placement game with on-chain interactions on Base Sepolia",
-    generator: 'v0.app'
+    generator: 'block-base.app'
 }
 
 export default function RootLayout({

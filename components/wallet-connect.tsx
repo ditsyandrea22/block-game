@@ -15,6 +15,12 @@ import {
 import { useBurnerWallet } from "@/hooks/use-burner-wallet"
 import { BASE_SEPOLIA_CHAIN_ID } from "@/lib/wagmi-config"
 
+// Utility function to detect if we're in a Chrome extension environment
+const isExtensionEnvironment = () => {
+  if (typeof window === 'undefined') return false
+  return window.location.protocol === 'chrome-extension:' || window.location.protocol === 'moz-extension:'
+}
+
 const BASE_SEPOLIA_PARAMS = {
   chainId: "0x14a34", // 84532 in hex
   chainName: "Base Sepolia",
@@ -26,6 +32,33 @@ const BASE_SEPOLIA_PARAMS = {
 export function WalletConnect() {
   const { address, isConnected, chain } = useAccount()
   const { connect, connectors, isPending } = useConnect()
+
+  const handleConnect = useCallback(async (connector: any) => {
+    try {
+      // If in extension environment, provide user feedback
+      if (isExtensionEnvironment()) {
+        console.log('Detected extension environment, connecting wallet...')
+      }
+      
+      await connect({ connector })
+    } catch (error) {
+      console.error('Connection error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown connection error'
+      
+      // Handle specific origin/extension related errors
+      if (errorMessage.includes('origins don\'t match') || errorMessage.includes('origin')) {
+        console.warn('Origin mismatch detected. This may be due to extension environment. Retrying...')
+        // Retry after a short delay
+        setTimeout(async () => {
+          try {
+            await connect({ connector })
+          } catch (retryError) {
+            console.error('Retry connection failed:', retryError)
+          }
+        }, 1000)
+      }
+    }
+  }, [connect])
   const { disconnect } = useDisconnect()
   const { switchChainAsync, isPending: isSwitching } = useSwitchChain()
   const { data: balance, refetch: refetchBalance } = useBalance({
@@ -53,7 +86,7 @@ export function WalletConnect() {
       })
       return true
     } catch (error) {
-      console.error("[v0] Failed to add Base Sepolia:", error)
+      console.error("Failed to add Base Sepolia:", error)
       return false
     }
   }, [])
@@ -67,7 +100,7 @@ export function WalletConnect() {
 
       // Chain not found in wallet - try to add it
       if (errorMsg.includes("Unrecognized") || errorMsg.includes("4902") || errorMsg.includes("not found")) {
-        console.log("[v0] Chain not found, adding Base Sepolia...")
+        console.log("Chain not found, adding Base Sepolia...")
         const added = await addBaseSepoliaToWallet()
         if (added) {
           // Try switching again after adding
@@ -85,7 +118,7 @@ export function WalletConnect() {
 
   useEffect(() => {
     if (isConnected && chain && chain.id !== BASE_SEPOLIA_CHAIN_ID) {
-      console.log("[v0] Connected to wrong chain:", chain.id, "- Auto-switching to Base Sepolia...")
+      console.log("Connected to wrong chain:", chain.id, "- Auto-switching to Base Sepolia...")
       switchToBaseSepolia()
     }
   }, [isConnected, chain, switchToBaseSepolia])
@@ -114,7 +147,7 @@ export function WalletConnect() {
     try {
       // Step 1: Ensure we're on Base Sepolia
       if (chain?.id !== BASE_SEPOLIA_CHAIN_ID) {
-        console.log("[v0] Switching to Base Sepolia before funding...")
+        console.log("Switching to Base Sepolia before funding...")
         const switched = await switchToBaseSepolia()
         if (!switched) {
           setFundError("Please switch to Base Sepolia network manually")
@@ -125,10 +158,10 @@ export function WalletConnect() {
         await new Promise((resolve) => setTimeout(resolve, 1500))
       }
 
-      console.log("[v0] Funding session wallet...")
-      console.log("[v0] From:", address)
-      console.log("[v0] To:", burner.address)
-      console.log("[v0] Amount:", fundAmount, "ETH")
+      console.log("Funding session wallet...")
+      console.log("From:", address)
+      console.log("To:", burner.address)
+      console.log("Amount:", fundAmount, "ETH")
 
       // Step 2: Send the funding transaction
       const hash = await sendTransactionAsync({
@@ -137,8 +170,8 @@ export function WalletConnect() {
         chainId: BASE_SEPOLIA_CHAIN_ID,
       })
 
-      console.log("[v0] Funding tx sent:", hash)
-      console.log("[v0] BaseScan: https://sepolia.basescan.org/tx/" + hash)
+      console.log("Funding tx sent:", hash)
+      console.log("BaseScan: https://sepolia.basescan.org/tx/" + hash)
 
       // Refresh balances after delay
       setTimeout(() => {
@@ -146,7 +179,7 @@ export function WalletConnect() {
         refetchBalance()
       }, 5000)
     } catch (error: unknown) {
-      console.error("[v0] Funding error:", error)
+      console.error("Funding error:", error)
       const errorMessage = error instanceof Error ? error.message : "Unknown error"
 
       if (errorMessage.includes("rejected") || errorMessage.includes("denied")) {
@@ -350,7 +383,7 @@ export function WalletConnect() {
           <DropdownMenuItem
             key={connector.uid}
             className="text-gray-300 focus:text-white focus:bg-gray-800 cursor-pointer"
-            onClick={() => connect({ connector })}
+            onClick={() => handleConnect(connector)}
           >
             {connector.name}
           </DropdownMenuItem>

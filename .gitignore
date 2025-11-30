@@ -121,7 +121,6 @@ vite.config.js.timestamp-*
 .turbo
 
 # pnpm
-pnpm-lock.yaml
 !pnpm-workspace.yaml
 
 # Bun
