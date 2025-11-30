@@ -1,6 +1,7 @@
 "use client"
 
-import { Fuel, Activity, Zap, ExternalLink, AlertCircle, CheckCircle, Clock, XCircle } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Fuel, Activity, Zap, ExternalLink, AlertCircle, CheckCircle, Clock, XCircle, RefreshCw } from "lucide-react"
 import { useBurnerWallet } from "@/hooks/use-burner-wallet"
 
 export function GameStatsOnChain() {
@@ -13,10 +14,21 @@ export function GameStatsOnChain() {
     transactionStatus, 
     pendingTx, 
     lastError, 
-    clearError 
+    clearError,
+    refresh,
+    isLoading
   } = useBurnerWallet()
 
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null)
+
   if (!address) return null
+
+  // Update the last update time when balance changes
+  useEffect(() => {
+    if (balance !== "0") {
+      setLastUpdateTime(new Date())
+    }
+  }, [balance])
 
   const getStatusIcon = () => {
     switch (transactionStatus.status) {
@@ -65,10 +77,23 @@ export function GameStatsOnChain() {
         </div>
         <div className="flex items-center gap-2">
           <Zap className="w-4 h-4 text-yellow-400" />
-          <div>
+          <div className="flex-1">
             <p className="text-[10px] text-gray-500 uppercase tracking-wider">Session</p>
-            <p className={`text-sm font-mono ${isReady ? "text-emerald-400" : "text-orange-400"}`}>
-              {balance.slice(0, 7)} ETH
+            <div className="flex items-center gap-2">
+              <p className={`text-sm font-mono ${isReady ? "text-emerald-400" : "text-orange-400"}`}>
+                {Number(balance).toFixed(8)} ETH
+              </p>
+              <button
+                onClick={refresh}
+                disabled={isLoading}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title="Refresh balance"
+              >
+                <RefreshCw className={`w-3 h-3 text-gray-400 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-500 mt-1">
+              {lastUpdateTime ? `Updated: ${lastUpdateTime.toLocaleTimeString()}` : 'Updating...'}
             </p>
           </div>
         </div>

@@ -5,7 +5,7 @@ import { safeGetItem, safeSetItem, safeRemoveItem, safeGetJSON, safeSetJSON } fr
 
 const STORAGE_PREFIX = "block_placer_burner_wallet_"
 const LEADERBOARD_KEY = "block_placer_leaderboard"
-const BASE_SEPOLIA_RPC = "https://sepolia.basescan.org"
+const BASE_SEPOLIA_RPC = "https://base-sepolia.publicnode.com"
 const FALLBACK_RPCS = [
   "https://base-sepolia.publicnode.com",
   "https://sepolia.base.org",

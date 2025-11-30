@@ -151,9 +151,27 @@ export default function GameContainer() {
     if (!selectedBlock) return
 
     // STRICT ON-CHAIN MODE: Block interaction if wallet is not ready for on-chain transactions
-    if (!burner.isReady) {
-      console.log("Game action blocked: burner wallet not ready for on-chain transactions")
+    console.log(`[GameContainer] === CELL CLICK DEBUG ===`)
+    console.log(`[GameContainer] Selected block:`, selectedBlock)
+    console.log(`[GameContainer] Burner wallet state:`, {
+      isReady: burner.isReady,
+      address: burner.address,
+      balance: burner.balance,
+      isLoading: burner.isLoading,
+    })
+    console.log(`[GameContainer] Main wallet:`, address)
+    
+    // TEMPORARY: Development bypass for testing
+    const DEV_BYPASS = false // Set to false for production
+    
+    if (!burner.isReady && !DEV_BYPASS) {
+      console.log(`[GameContainer] BLOCKING: burner.isReady = ${burner.isReady}`)
+      console.log(`[GameContainer] Address: ${burner.address}`)
+      console.log(`[GameContainer] Balance: ${burner.balance}`)
+      console.log(`[GameContainer] Game action blocked: burner wallet not ready for on-chain transactions`)
       return
+    } else if (!burner.isReady && DEV_BYPASS) {
+      console.log(`[GameContainer] DEV BYPASS: Allowing game action despite isReady = ${burner.isReady}`)
     }
 
     // Block interaction if there's a pending transaction or queue
@@ -272,6 +290,17 @@ export default function GameContainer() {
       {burner.address && (
         <ClientOnly>
           <GameStatsOnChain />
+          <div className="flex justify-center mt-2">
+            <Button
+              onClick={burner.refresh}
+              disabled={burner.isLoading}
+              variant="outline"
+              size="sm"
+              className="text-xs"
+            >
+              {burner.isLoading ? "Refreshing..." : "Refresh Wallet"}
+            </Button>
+          </div>
         </ClientOnly>
       )}
 
